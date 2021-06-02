@@ -3,11 +3,12 @@ const readline = require("readline");
 const crypto = require("crypto");
 const fs = require("fs");
 const inputs = require("./input");
+const cp = require("child_process");
 var txnId = "2d8a5fc1-28c9-4498-94e2-2dc23cd322d6";
 const secret = "U2FsdGVkX1/SgTB8aZz1a+Yxg+VUBVZJfTDbOo6ppo2YcDSgGgayFl5EtiQ5vHZALo/AjTNq3du3OKFf6sbC4g==";
 var token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX25hbWUiOiJjYmZlYmUzMy0zMmFiLTQ3MmYtOGFkNi03ZWU0NmNjN2RlYjciLCJ1c2VyX2lkIjoiY2JmZWJlMzMtMzJhYi00NzJmLThhZDYtN2VlNDZjYzdkZWI3IiwidXNlcl90eXBlIjoiQkVORUZJQ0lBUlkiLCJtb2JpbGVfbnVtYmVyIjo4OTUzNDMxODc0LCJiZW5lZmljaWFyeV9yZWZlcmVuY2VfaWQiOjM4ODIzODQ1MjE1MjIwLCJzZWNyZXRfa2V5IjoiYjVjYWIxNjctNzk3Ny00ZGYxLTgwMjctYTYzYWExNDRmMDRlIiwidWEiOiJNb3ppbGxhLzUuMCAoWDExOyBMaW51eCB4ODZfNjQpIEFwcGxlV2ViS2l0LzUzNy4zNiAoS0hUTUwsIGxpa2UgR2Vja28pIENocm9tZS85MC4wLjQ0MzAuNzIgU2FmYXJpLzUzNy4zNiIsImRhdGVfbW9kaWZpZWQiOiIyMDIxLTA1LTE5VDEzOjM0OjAyLjA0NloiLCJpYXQiOjE2MjE0MzEyNDIsImV4cCI6MTYyMTQzMjE0Mn0.6Ftfh6WH38DBgrHJBiCpXIuwIm-HG29QGog7GIRNLwk";
 
-const distId = inputs.distId.kota, 
+const distId = inputs.distId.Indore, 
 date=inputs.date,
 minAgeLimit=inputs.ageLimit.age18to44, 
 mobileNumber = inputs.mobileNumber, 
@@ -27,7 +28,6 @@ const urls = {
     confirmOTP: "/v2/auth/validateMobileOtp",
     logout: "/v2/auth/logout",
     settoken: "http://localhost:3233/settoken"
-    // schedule: "/mockapi"
 }
 
 const permanentHeaders = {
@@ -100,42 +100,55 @@ function getBeneficiariesRefIds(){
 
     return apiCall(baseUrl+urls.beneficiaries, "get", headers).then(data => {
         if(data.trim() === "Unauthenticated access!"){
-            throw Error(data)
+            throw new Error(data)
         }else{
-            var beneficiaries = JSON.parse(data).beneficiaries.map(ele => ele.beneficiary_reference_id);
-            return beneficiarieIndex === null ? beneficiaries : [beneficiaries[beneficiarieIndex]];
+            try {
+                var beneficiaries = JSON.parse(data).beneficiaries.map(ele => ele.beneficiary_reference_id);
+                return beneficiarieIndex === null ? beneficiaries : [beneficiaries[beneficiarieIndex]];   
+            } catch (error) {
+                throw new Error("block")
+            }
         }
     })
 }
 
-function getCenters(){
+function getCenters(ben){
     let headers = {
         ...permanentHeaders,
         authorization: `Bearer ${token}`
     }
 
     return apiCall(baseUrl+urls.calenderByDist, "get", headers).then(data => {
-        // var centers = JSON.parse(data).centers.filter(ele => ele.sessions[0].min_age_limit === minAgeLimit && lookingCenters[ele.center_id] && ele.fee_type === "Free" && (ele.sessions[0].available_capacity > 0 || ele.sessions[0].available_capacity_dose1 > 0));
-        var newCenters = []
-        JSON.parse(data).centers.forEach(center => {
-            let newSession = center.sessions.filter(session => session.date === date && session.min_age_limit === minAgeLimit)// && (session.available_capacity > 0 || session.available_capacity_dose1 > 0))
-            
-            if(newSession.length && lookingCenters[center.center_id] && center.fee_type === "Free"){
-                newCenters.push({
-                    ...center,
-                    sessions: newSession
+        if(data.trim() === "Unauthenticated access!"){
+            throw new Error(data)
+        }else{
+            try {
+                var newCenters = []
+                JSON.parse(data).centers.forEach(center => {
+                    if(lookingCenters[center.center_id] && center.fee_type === "Free"){
+                        let newSession = center.sessions.filter(session => session.date === date && session.min_age_limit === minAgeLimit && session.vaccine === inputs.vaccine && (session.available_capacity > 0 || session.available_capacity_dose1 > 0))
+                        
+                        if(newSession.length){
+                            newCenters.push({
+                                ...center,
+                                sessions: newSession
+                            })
+                        }
+                    }
                 })
+                newCenters = newCenters.map(center => {
+                    return {
+                        center_id: center.center_id,
+                        captcha: captcha,
+                        session_id: center.sessions[0].session_id,
+                        slot: center.sessions[0].slots[slotIndex]
+                    }
+                })
+                return {ben, centers: newCenters}   
+            } catch (error) {
+                throw new Error("block")
             }
-        })
-        newCenters = newCenters.map(center => {
-            return {
-                center_id: center.center_id,
-                captcha: captcha,
-                session_id: center.sessions[0].session_id,
-                slot: center.sessions[0].slots[slotIndex]
-            }
-        })
-        return newCenters
+        }
     })
 }
 
@@ -186,10 +199,14 @@ function getOtp(){
                 return {txnId}
             })
         }else {
-            data = JSON.parse(data);
-            console.log("write -->", data);
-            writeFile(data.txnId, "txnid.txt");
-            return data
+            try {
+                data = JSON.parse(data);
+                console.log("write -->", data);
+                writeFile(data.txnId, "txnid.txt");
+                return data
+            } catch (error) {
+                throw new Error("block");
+            }
         }
     }).catch(err => {
         throw new Error(err);
@@ -253,42 +270,59 @@ function setToken(token){
     })
 }
 
-function fn(num){
-    getBeneficiariesRefIds().then(ben => {
-        getCenters().then(centers => {
-            if(centers.length){
-                console.log(num, centers, ben.length)
-                centers.forEach(center => {
-                    BookSlot({
-                        dose: 1,
-                        beneficiaries: ben,
-                        ...center
-                    }).then(id => console.log(id))
-                })
-            }else {
-                console.log(num, centers, ben.length)
-                setTimeout(() => {
-                    fn(num+1);
-                },1000)
-            };
+const SN = (function getSwitchNetwork(){
+    var nextNetIndex = 0;
+    return function switchNetwork(num){
+        console.log("network switching...")
+        cp.exec(`nmcli c up '${inputs.wifiName[nextNetIndex]}'`, (err, stdout, stderr) => {
+            if(err){
+                setTimeout(() => switchNetwork(num), 100)
+                return;
+            }
+            console.log(`${inputs.wifiName[nextNetIndex]} connected...`)
+            if(nextNetIndex === inputs.wifiName.length - 1) nextNetIndex = 0;
+            else nextNetIndex++;
+            fn(num)
         })
+    }
+})()
+
+function fn(num){
+    getBeneficiariesRefIds().then(getCenters).then(data => {
+        let { ben, centers} = data;
+        if(centers.length){
+            console.log(num, centers, ben.length)
+            centers.forEach(center => {
+                BookSlot({
+                    dose: 1,
+                    beneficiaries: ben,
+                    ...center
+                }).then(id => console.log(id))
+            })
+        }else {
+            console.log(num, centers, ben.length)
+            setTimeout(() => {
+                fn(num+1);
+            },inputs.cycleDuration * 1000)
+        };
     }).catch(err => {
         console.log(err.message);
-        getOtp().then(otpRes => {
-            txnId = otpRes.txnId;
-            askQuestion("Enter Otp:").then(otp => {
-                confirmOtp(otp, otpRes.txnId).then(cnfOtpRes => {
-                    token = cnfOtpRes.token;
-                    writeFile(token, "token.txt");
-                    setToken(token).then(() => askQuestion("Enter Captcha:")).then(data => {
-                        captcha = data;
-                        fn(1);
+        if(err.message === "block"){
+            SN(num);
+        }else{
+            getOtp().then(otpRes => {
+                askQuestion("Enter Otp:").then(otp => {
+                    confirmOtp(otp, otpRes.txnId).then(cnfOtpRes => {
+                        token = cnfOtpRes.token;
+                        writeFile(token, "token.txt");
+                        setToken(token).then(() => askQuestion("Enter Captcha:")).then(data => {
+                            captcha = data;
+                            fn(1);
+                        })
                     })
                 })
             })
-        }).catch(err => {
-            console.log(err)
-        })
+        }
     })
 }
 
@@ -301,7 +335,7 @@ readFile("token.txt").then(data => {
                 captcha = capdata;
                 console.log("read -->", data);
                 token = data;
-                fn(1);
+                SN(1);
             }
         })
     })

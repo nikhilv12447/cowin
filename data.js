@@ -1,3 +1,4 @@
+const { resolve } = require('path');
 const input = require('./input');
 const centers = {
     "centers": [
@@ -1089,24 +1090,35 @@ const centers = {
 }
 
 
-var newCenters = []
-centers.centers.forEach(center => {
-    let newSession = center.sessions.filter(session => session.date === "21-05-2021" && session.min_age_limit === 18 && (session.available_capacity > 0 || session.available_capacity_dose1 > 0))
-    // console.log(center.address, newSession)
-    if(newSession.length && input.lookingCenters[center.center_id] && center.fee_type === "Free"){
-        newCenters.push({
-            ...center,
-            sessions: newSession
-        })
-    }
+// var newCenters = []
+// centers.centers.forEach(center => {
+//     let newSession = center.sessions.filter(session => session.date === "21-05-2021" && session.min_age_limit === 18 && (session.available_capacity > 0 || session.available_capacity_dose1 > 0))
+//     // console.log(center.address, newSession)
+//     if(newSession.length && input.lookingCenters[center.center_id] && center.fee_type === "Free"){
+//         newCenters.push({
+//             ...center,
+//             sessions: newSession
+//         })
+//     }
+// })
+
+// newCenters = newCenters.map(center => {
+//     return {
+//         center_id: center.center_id,
+//         captcha: "captcha",
+//         session_id: center.sessions[0].session_id,
+//         slot: center.sessions[0].slots[0]
+//     }
+// })
+// newCenters.forEach(center => console.log(center))
+
+function abc(){
+    return Promise.resolve().then(() => {
+        throw new Error("block")
+    })
+}
+
+abc().catch(err => {
+    console.log(err.message)
 })
 
-newCenters = newCenters.map(center => {
-    return {
-        center_id: center.center_id,
-        captcha: "captcha",
-        session_id: center.sessions[0].session_id,
-        slot: center.sessions[0].slots[0]
-    }
-})
-newCenters.forEach(center => console.log(center))
