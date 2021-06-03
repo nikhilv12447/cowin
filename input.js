@@ -84,5 +84,5 @@ module.exports = {
     beneficiarieIndex: null,
     cycleDuration: 4, //in sec
     vaccine: "COVISHIELD", // COVAXIN
-    wifiName: ["Esme Net Nahi Hai", "jacksparrow"]// "realme 7i"]//"Naruto usumaki"] //, "AndroidAP"
+    wifiName: ["jacksparrow", "Esme Net Nahi Hai"]// "realme 7i"]//"Naruto usumaki"] //, "AndroidAP"
 }
