@@ -5,10 +5,10 @@ const fs = require("fs");
 const inputs = require("./input");
 const cp = require("child_process");
 var txnId = "2d8a5fc1-28c9-4498-94e2-2dc23cd322d6";
-const secret = "U2FsdGVkX1/SgTB8aZz1a+Yxg+VUBVZJfTDbOo6ppo2YcDSgGgayFl5EtiQ5vHZALo/AjTNq3du3OKFf6sbC4g==";
+const secret = "U2FsdGVkX1/bdejoaGbFIdpstMEfSBfJNv9l34QGjRQjB5MYuPtFOJmgfb4/ZDMZvlkl2wuJz2zFBpALr2S0hA==";
 var token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX25hbWUiOiJjYmZlYmUzMy0zMmFiLTQ3MmYtOGFkNi03ZWU0NmNjN2RlYjciLCJ1c2VyX2lkIjoiY2JmZWJlMzMtMzJhYi00NzJmLThhZDYtN2VlNDZjYzdkZWI3IiwidXNlcl90eXBlIjoiQkVORUZJQ0lBUlkiLCJtb2JpbGVfbnVtYmVyIjo4OTUzNDMxODc0LCJiZW5lZmljaWFyeV9yZWZlcmVuY2VfaWQiOjM4ODIzODQ1MjE1MjIwLCJzZWNyZXRfa2V5IjoiYjVjYWIxNjctNzk3Ny00ZGYxLTgwMjctYTYzYWExNDRmMDRlIiwidWEiOiJNb3ppbGxhLzUuMCAoWDExOyBMaW51eCB4ODZfNjQpIEFwcGxlV2ViS2l0LzUzNy4zNiAoS0hUTUwsIGxpa2UgR2Vja28pIENocm9tZS85MC4wLjQ0MzAuNzIgU2FmYXJpLzUzNy4zNiIsImRhdGVfbW9kaWZpZWQiOiIyMDIxLTA1LTE5VDEzOjM0OjAyLjA0NloiLCJpYXQiOjE2MjE0MzEyNDIsImV4cCI6MTYyMTQzMjE0Mn0.6Ftfh6WH38DBgrHJBiCpXIuwIm-HG29QGog7GIRNLwk";
 
-const distId = inputs.distId.Indore, 
+const distId = inputs.distId.thane, 
 date=inputs.date,
 minAgeLimit=inputs.ageLimit.age18to44, 
 mobileNumber = inputs.mobileNumber, 
@@ -102,11 +102,20 @@ function getBeneficiariesRefIds(){
         if(data.trim() === "Unauthenticated access!"){
             throw new Error(data)
         }else{
+            let beneficiaries;
+            let errorMsg = "Unauthenticated access!";
             try {
-                var beneficiaries = JSON.parse(data).beneficiaries.map(ele => ele.beneficiary_reference_id);
-                return beneficiarieIndex === null ? beneficiaries : [beneficiaries[beneficiarieIndex]];   
+                beneficiaries = JSON.parse(data).beneficiaries;  
             } catch (error) {
-                throw new Error("block")
+                console.log("get ben =>", JSON.parse(data).message)
+                errorMsg = "block";
+            }
+
+            if(beneficiaries){
+                beneficiaries.map(ele => ele.beneficiary_reference_id);
+                return beneficiarieIndex === null ? beneficiaries : [beneficiaries[beneficiarieIndex]];
+            }else{
+                throw new Error(errorMsg);
             }
         }
     })
@@ -122,11 +131,26 @@ function getCenters(ben){
         if(data.trim() === "Unauthenticated access!"){
             throw new Error(data)
         }else{
+            let newCenters = []
+            let centers;
+            let errorMsg = "Unauthenticated access!";
             try {
-                var newCenters = []
-                JSON.parse(data).centers.forEach(center => {
+                centers = JSON.parse(data).centers;
+                
+            } catch (error) {
+                console.log("getcenters => ", JSON.parse(data).message)
+                errorMsg = "block";
+            }
+
+            if(centers){
+                centers.forEach(center => {
                     if(lookingCenters[center.center_id] && center.fee_type === "Free"){
-                        let newSession = center.sessions.filter(session => session.date === date && session.min_age_limit === minAgeLimit && session.vaccine === inputs.vaccine && (session.available_capacity > 0 || session.available_capacity_dose1 > 0))
+                        let newSession;
+                        if(inputs.dose1){
+                            newSession = center.sessions.filter(session => session.date === date && session.min_age_limit === minAgeLimit && session.vaccine === inputs.vaccine && (session.available_capacity > 0 || session.available_capacity_dose1 > 0));
+                        }else{
+                            newSession = center.sessions.filter(session => session.date === date && session.min_age_limit === minAgeLimit && session.vaccine === inputs.vaccine && (session.available_capacity > 0 || session.available_capacity_dose2 > 0));
+                        }
                         
                         if(newSession.length){
                             newCenters.push({
@@ -144,10 +168,10 @@ function getCenters(ben){
                         slot: center.sessions[0].slots[slotIndex]
                     }
                 })
-                return {ben, centers: newCenters}   
-            } catch (error) {
-                throw new Error("block")
-            }
+                return {ben, centers: newCenters}
+            }else{
+                throw new Error(errorMsg)
+            }  
         }
     })
 }
@@ -310,14 +334,16 @@ function fn(num){
         if(err.message === "block"){
             SN(num);
         }else{
-            getOtp().then(otpRes => {
-                askQuestion("Enter Otp:").then(otp => {
-                    confirmOtp(otp, otpRes.txnId).then(cnfOtpRes => {
-                        token = cnfOtpRes.token;
-                        writeFile(token, "token.txt");
-                        setToken(token).then(() => askQuestion("Enter Captcha:")).then(data => {
-                            captcha = data;
-                            fn(1);
+            logout(token).then(() =>{
+                getOtp().then(otpRes => {
+                    askQuestion("Enter Otp:").then(otp => {
+                        confirmOtp(otp, otpRes.txnId).then(cnfOtpRes => {
+                            token = cnfOtpRes.token;
+                            writeFile(token, "token.txt");
+                            setToken(token).then(() => askQuestion("Enter Captcha:")).then(data => {
+                                captcha = data;
+                                fn(1);
+                            })
                         })
                     })
                 })
